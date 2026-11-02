@@ -29,11 +29,13 @@ Prerequisites: `bun`, Java 21+, Docker.
 # 1. Database
 bun run db:up
 
-# 2. API (needs the env vars listed in docs/DEPLOYMENT.md)
-cd apps/api && ./mvnw spring-boot:run
+# 2. API — Spring Boot does not read .env on its own, export it first
+cd apps/api && cp .env.example .env   # first time, then fill in secrets
+set -a && source .env && set +a
+./mvnw spring-boot:run
 
 # 3. Web
-cd apps/web && cp ../api/.env.example .env.local  # first time
+cd apps/web && cp .env.example .env.local   # first time
 bun install && bun dev
 ```
 
