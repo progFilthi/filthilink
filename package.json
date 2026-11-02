@@ -1,0 +1,17 @@
+{
+  "name": "filthilink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FilthiLink — URL shortener with analytics, API keys and subscriptions",
+  "scripts": {
+    "web:dev": "cd apps/web && bun dev",
+    "web:build": "cd apps/web && bun run build",
+    "web:lint": "cd apps/web && bun run lint",
+    "web:install": "cd apps/web && bun install",
+    "api:dev": "cd apps/api && ./mvnw spring-boot:run",
+    "api:build": "cd apps/api && ./mvnw -DskipTests package",
+    "api:test": "cd apps/api && ./mvnw test",
+    "db:up": "docker compose -f apps/api/compose.yaml up -d",
+    "db:down": "docker compose -f apps/api/compose.yaml down"
+  }
+}
