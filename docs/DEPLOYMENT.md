@@ -21,7 +21,7 @@ Build-time environment variables (must be set in Vercel, they are inlined at bui
 | Variable | Example |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | `https://api.filthilink.store` |
-| `NEXT_PUBLIC_SHORT_URL_DOMAIN` | `https://filthi.link` |
+| `NEXT_PUBLIC_SHORT_URL_DOMAIN` | `https://go.filthilink.store` |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `…apps.googleusercontent.com` |
 
 These are public by design. There are no server-side secrets in the web app.
@@ -51,6 +51,8 @@ Runtime environment variables:
 | `DODO_WEBHOOK_KEY` | |
 | `DODO_ENVIRONMENT` | `sandbox` or `live` |
 | `PREMIUM_MONTHLY` / `PREMIUM_YEARLY` | Dodo product IDs |
+| `APP_BASE_URL` | Host serving `GET /{shortCode}`, e.g. `https://go.filthilink.store` |
+| `APP_CORS_ALLOWED_ORIGINS` | Comma-separated browser origins, e.g. `https://filthilink.store,https://www.filthilink.store` |
 | `PORT` | Optional, defaults to `8080` |
 
 Database: PostgreSQL 17. Flyway runs on startup with `ddl-auto: validate`, so a
@@ -60,13 +62,23 @@ failed migration fails the boot — check logs before declaring a deploy healthy
 
 | Host | Points to | Purpose |
 |---|---|---|
-| `app.filthilink.store` | Vercel | Dashboard / marketing |
-| `api.filthilink.store` | Contabo | REST API |
-| `filthi.link` | Contabo | Short-link redirects (`GET /{shortCode}`) |
+| `filthilink.store` | Vercel | Web app (primary) |
+| `www.filthilink.store` | Vercel | Web app |
+| `app.filthilink.store` | Vercel | Legacy host, removed after cutover |
+| `api.filthilink.store` | Coolify (Contabo) | REST API |
+| `go.filthilink.store` | Coolify (Contabo) | Short-link redirects (`GET /{shortCode}`) |
 
-Redirects are served by the **API**, not the web app. `app.base-url` in
-`apps/api/src/main/resources/application.yaml` is what gets prepended to every
-short URL returned by the API, so it must match the redirect host.
+Redirects are served by the **API**, not the web app, so they cannot live on the
+apex domain once Vercel owns it. `APP_BASE_URL` / `app.base-url` must match the
+redirect host (`go.filthilink.store`); it is prepended to every short URL the API
+returns.
+
+Vercel apex records (Namecheap, external DNS — two A records, no ALIAS support):
+
+| Type | Host | Value |
+|---|---|---|
+| A | `@` | `216.198.79.1` |
+| A | `@` | `64.29.17.1` |
 
 ## Release checklist
 

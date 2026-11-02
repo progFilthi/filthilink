@@ -13,7 +13,7 @@ export const config = {
     get baseDomain() {
       return (
         process.env.NEXT_PUBLIC_SHORT_URL_DOMAIN ||
-        'https://filthi.link'
+        'https://go.filthilink.store'
       );
     },
   },

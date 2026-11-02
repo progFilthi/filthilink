@@ -26,9 +26,11 @@ app:
   google:
     client-id: ${CLIENT_ID}
     client-secret: ${CLIENT_SECRET}
-#  base-url: http://localhost:8080
-  base-url: https://filthilink.store
+  # Public host that serves GET /{shortCode}; used to build every returned short URL.
+  base-url: "${APP_BASE_URL:https://go.filthilink.store}"
   admin-emails: ${ADMIN_EMAILS:}
+  cors:
+    allowed-origins: "${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,https://filthilink.store,https://www.filthilink.store,https://app.filthilink.store}"
   refresh-token:
     expiry: 7
   jwt:
