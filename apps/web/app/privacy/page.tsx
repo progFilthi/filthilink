@@ -85,8 +85,9 @@ export default function PrivacyPage() {
             </h2>
             <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
               We use strictly necessary storage only. After you sign in we store a
-              short-lived access token and a refresh token in your browser so you
-              stay logged in and so requests to our API can be authenticated.
+              short-lived access token and a refresh token in your browser&apos;s
+              local storage so you stay logged in and so requests to our API can
+              be authenticated.
             </p>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
               We do not use advertising cookies, we do not run third-party
@@ -111,21 +112,111 @@ export default function PrivacyPage() {
               .
             </p>
             <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
-              We use this information for one purpose: to authenticate you and to
-              create or match your FilthiLink account. We request only the{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
-                openid
-              </code>
-              ,{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
-                email
-              </code>
-              , and{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
-                profile
-              </code>{" "}
+              We use this information for one purpose only: to authenticate you
+              and to create or match your FilthiLink account. FilthiLink requests
+              exactly three OAuth scopes, all of them non-sensitive:
+            </p>
+            <div className="mb-3 overflow-x-auto">
+              <table className="w-full text-left text-[14px] text-muted-foreground">
+                <thead className="text-foreground">
+                  <tr className="border-b">
+                    <th className="py-2 pr-4 font-medium">Scope</th>
+                    <th className="py-2 pr-4 font-medium">What it grants</th>
+                    <th className="py-2 font-medium">What we do with it</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border/50">
+                    <td className="py-2 pr-4">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
+                        openid
+                      </code>
+                    </td>
+                    <td className="py-2 pr-4">
+                      A stable Google account identifier for authentication
+                    </td>
+                    <td className="py-2">
+                      Match your Google identity to your FilthiLink account
+                    </td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="py-2 pr-4">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
+                        email
+                      </code>
+                    </td>
+                    <td className="py-2 pr-4">Your email address</td>
+                    <td className="py-2">
+                      Create your account, sign you in, send essential service
+                      and billing notices
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-[13px]">
+                        profile
+                      </code>
+                    </td>
+                    <td className="py-2 pr-4">Your name and profile picture URL</td>
+                    <td className="py-2">
+                      Display your name and avatar in the dashboard
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
+              These are the only Google permissions we request. FilthiLink does
+              not request, and cannot access, any sensitive or restricted Google
               scopes.
             </p>
+            <h3 className="mb-2 mt-6 text-base font-semibold text-foreground">
+              Limited Use disclosure
+            </h3>
+            <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
+              FilthiLink&apos;s use and transfer to any other app of information
+              received from Google APIs will adhere to the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements.
+            </p>
+            <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
+              Accordingly, Google user data obtained through Sign in with Google
+              is:
+            </p>
+            <ul className="mb-3 list-disc pl-6 space-y-1.5 text-[15px] leading-relaxed text-muted-foreground">
+              <li>
+                used only to provide or improve the user-facing features of
+                FilthiLink that are described in this policy — that is,
+                authentication, account creation, and displaying your name and
+                avatar;
+              </li>
+              <li>
+                never sold, rented, or transferred to third parties for any
+                purpose, including advertising;
+              </li>
+              <li>
+                never used for serving ads, including personalised, retargeting,
+                or interest-based advertising;
+              </li>
+              <li>
+                never used to determine creditworthiness or for lending
+                purposes;
+              </li>
+              <li>
+                never used to train or improve generalised artificial
+                intelligence or machine-learning models; and
+              </li>
+              <li>
+                readable by humans only where you have given explicit consent,
+                where necessary for security or abuse investigation, or where
+                required by law.
+              </li>
+            </ul>
             <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
               We do <span className="font-medium text-foreground">not</span>{" "}
               request access to Gmail, Google Drive, Google Calendar, Google
@@ -134,20 +225,29 @@ export default function PrivacyPage() {
               refresh tokens — the identity token is verified on our server and
               discarded, and you are issued a FilthiLink session instead.
             </p>
+
+            <h3 className="mb-2 mt-6 text-base font-semibold text-foreground">
+              Deleting your Google-linked data
+            </h3>
             <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
-              FilthiLink&apos;s use of information received from Google APIs
-              adheres to the{" "}
+              You can request deletion of your FilthiLink account and the Google
+              data we hold about you at any time by emailing{" "}
               <a
-                href="https://developers.google.com/terms/api-services-user-data-policy"
+                href="mailto:gamerfilthi@gmail.com"
                 className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
               >
-                Google API Services User Data Policy
-              </a>
-              , including the Limited Use requirements. Google user data is not
-              used for advertising, is not sold, is not used to train generalized
-              AI or machine-learning models, and is not shared with third parties
-              except as described in section 6 or as necessary to provide the
-              Service.
+                gamerfilthi@gmail.com
+              </a>{" "}
+              from the address linked to your Google account, with the subject
+              &quot;Delete my data&quot;. This is the only step required — no
+              second confirmation or paid step is involved.
+            </p>
+            <p className="mb-3 text-[15px] leading-relaxed text-muted-foreground">
+              We delete the Google data associated with your account (name,
+              email, profile picture URL, and account identifier) within 30 days
+              of the request, except for billing records we must keep for tax and
+              accounting purposes. Deletion from FilthiLink does not affect your
+              Google Account itself.
             </p>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
               You can revoke FilthiLink&apos;s access to your Google Account at
@@ -262,8 +362,8 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <span className="font-medium text-foreground">Links and codes</span>{" "}
-                — kept until you delete them or delete your account. A deleted
-                short code stops redirecting immediately.
+                — kept until you request their deletion or delete your account. A
+                deleted short code stops redirecting immediately.
               </li>
               <li>
                 <span className="font-medium text-foreground">Server logs</span> —
@@ -307,7 +407,8 @@ export default function PrivacyPage() {
               Depending on where you live you may have the right to access,
               correct, export, or delete your personal information, to object to
               or restrict certain processing, and to withdraw consent. You can
-              delete your links from the dashboard at any time.
+              request deletion of your account, of individual short links, or of
+              all data we hold about you at any time.
             </p>
             <p className="text-[15px] leading-relaxed text-muted-foreground">
               To exercise any of these rights, email us at the address in section
