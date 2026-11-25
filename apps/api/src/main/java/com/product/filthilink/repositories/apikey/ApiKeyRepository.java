@@ -4,13 +4,15 @@ import com.product.filthilink.entities.models.ApiKey;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface ApiKeyRepository extends JpaRepository<ApiKey, Long> {
 
+    // Was findUserById(...), which Spring Data parses as findById(...): it matched the API key whose
+    // own id equals the user id, not the keys that belong to the user.
+    List<ApiKey> findByUserId(Long userId);
 
-     List<ApiKey> findUserById(Long userId);
+    long countByUserId(Long userId);
 
-
-     Optional<ApiKey> findByKeyPrefix(String prefix);
+    /** A prefix is not guaranteed to be unique; the caller checks the full key hash. */
+    List<ApiKey> findByKeyPrefix(String prefix);
 }

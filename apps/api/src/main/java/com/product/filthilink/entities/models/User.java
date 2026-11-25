@@ -32,7 +32,7 @@ public class User implements UserDetails {
     //for Google users we need to make the password nullable
     private String password;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true)
     private String googleId;
 
     @Column(nullable = false)

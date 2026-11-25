@@ -7,5 +7,6 @@ public record LinkResponseDto(
         String shortUrl,
         String originalUrl,
         Integer clickCount,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        LocalDateTime createdAt
 ){}

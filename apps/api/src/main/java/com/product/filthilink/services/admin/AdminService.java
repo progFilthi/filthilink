@@ -52,7 +52,7 @@ public class AdminService {
                 userRepository.countByRole(Role.ADMIN),
                 userRepository.countByCreatedAtAfter(now.minusDays(7)),
                 userRepository.countByCreatedAtAfter(now.minusDays(30)),
-                linkRepository.count(),
+                linkRepository.countActive(),
                 linkRepository.totalClickCount(),
                 subscriptionRepository.countByPlans(Plan.FREE),
                 subscriptionRepository.countByPlans(Plan.PREMIUM),
@@ -72,7 +72,7 @@ public class AdminService {
                 user.getCreatedAt(),
                 sub.map(Subscription::getPlans).orElse(Plan.FREE),
                 sub.map(Subscription::getStatus).orElse(SubscriptionStatus.ACTIVE),
-                linkRepository.countByUserId(user.getId()),
+                linkRepository.countByUserIdAndDeletedAtIsNull(user.getId()),
                 linkRepository.sumClickCountByUserId(user.getId())
         );
     }

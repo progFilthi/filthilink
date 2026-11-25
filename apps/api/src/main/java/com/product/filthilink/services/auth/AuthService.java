@@ -152,7 +152,7 @@ public class AuthService {
     }
 
     private AuthResponseDto generateAuthResponse(User user){
-        String accessToken = jwtUtil.generateAccessToken(user.getEmail());
+        String accessToken = jwtUtil.generateAccessToken(user);
 
         String rawRefreshToken = jwtUtil.generateRefreshToken(user.getEmail());
 

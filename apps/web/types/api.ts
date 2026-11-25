@@ -1,5 +1,10 @@
 export interface CreateLinkRequestDto {
   originalUrl: string;
+  customSlug?: string;
+}
+
+export interface UpdateLinkRequestDto {
+  originalUrl: string;
 }
 
 export interface LinkResponseDto {
@@ -8,6 +13,14 @@ export interface LinkResponseDto {
   originalUrl: string;
   clickCount: number;
   expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface LinkUsageResponseDto {
+  used: number;
+  limit: number;
+  premium: boolean;
+  resetsAt: string;
 }
 
 export interface CreateApiKeyRequestDto {

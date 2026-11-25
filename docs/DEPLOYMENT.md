@@ -50,7 +50,7 @@ Runtime environment variables:
 | `DODO_API_KEY` | |
 | `DODO_WEBHOOK_KEY` | |
 | `DODO_ENVIRONMENT` | `sandbox` or `live` |
-| `PREMIUM_MONTHLY` / `PREMIUM_YEARLY` | Dodo product IDs |
+| `PREMIUM_MONTHLY` / `PREMIUM_YEARLY` | Dodo recurring product IDs: $3/month and $30/year. Displayed prices come from `apps/web/lib/pricing.ts`, but these are what customers are actually charged. |
 | `APP_BASE_URL` | Host serving `GET /{shortCode}`, e.g. `https://go.filthilink.store` |
 | `APP_CORS_ALLOWED_ORIGINS` | Comma-separated browser origins, e.g. `https://filthilink.store,https://www.filthilink.store` |
 | `PORT` | Optional, defaults to `8080` |

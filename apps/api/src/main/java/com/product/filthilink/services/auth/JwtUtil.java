@@ -1,5 +1,6 @@
 package com.product.filthilink.services.auth;
 
+import com.product.filthilink.entities.models.User;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -11,6 +12,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.Random;
 
 @Component
@@ -26,14 +28,17 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
     }
 
-    public String generateAccessToken(String email){
+    public String generateAccessToken(User user){
 
         Instant now = Instant.now();
 
-
+        String authority = "ROLE_" + user.getRole().name();
 
         return Jwts.builder()
-                .subject(email)
+                .subject(user.getEmail())
+                // The frontend decodes the token to decide whether to show the admin nav.
+                .claim("role", user.getRole().name())
+                .claim("authorities", List.of(authority))
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(Long.parseLong(accessTokenExpiry))))
                 .signWith(getKey())

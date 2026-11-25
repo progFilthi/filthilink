@@ -2,6 +2,8 @@ package com.product.filthilink.controllers.links;
 
 import com.product.filthilink.entities.dtos.CreateLinkRequestDto;
 import com.product.filthilink.entities.dtos.LinkResponseDto;
+import com.product.filthilink.entities.dtos.LinkUsageResponseDto;
+import com.product.filthilink.entities.dtos.UpdateLinkRequestDto;
 import com.product.filthilink.services.links.LinkService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,11 +34,40 @@ public class LinkController {
     }
 
 
+    @GetMapping("/usage")
+    public ResponseEntity<LinkUsageResponseDto> getMyUsage(@AuthenticationPrincipal UserDetails userDetails) {
+
+        return ResponseEntity.ok(linkService.getUsage(userDetails.getUsername()));
+
+    }
+
+
     @GetMapping
     public ResponseEntity<Page<LinkResponseDto>> getMyLinks(@PageableDefault(sort = "createdAt", size = 5) Pageable pageable,
                                                             @AuthenticationPrincipal UserDetails userDetails) {
 
         return ResponseEntity.ok(linkService.getLinksByUser(userDetails.getUsername(), pageable));
+
+    }
+
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<LinkResponseDto> updateLink(@PathVariable Long id,
+                                                      @RequestBody UpdateLinkRequestDto dto,
+                                                      @AuthenticationPrincipal UserDetails userDetails) {
+
+        return ResponseEntity.ok(linkService.updateLink(id, dto, userDetails.getUsername()));
+
+    }
+
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteLink(@PathVariable Long id,
+                                           @AuthenticationPrincipal UserDetails userDetails) {
+
+        linkService.deleteLink(id, userDetails.getUsername());
+
+        return ResponseEntity.noContent().build();
 
     }
 

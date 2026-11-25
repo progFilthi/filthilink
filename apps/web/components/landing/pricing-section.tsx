@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
+import { FREE_FEATURES, PRICING, PRO_FEATURES, yearlyPerMonth } from '@/lib/pricing';
 
 export function PricingSection() {
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
@@ -48,20 +49,7 @@ export function PricingSection() {
     }
   };
 
-  const freeFeatures = [
-    '20 links per month',
-    'No Api Key Generation',
-    'Basic analytics',
-    'Standard redirection',
-  ];
-
-  const premiumFeatures = [
-    'Unlimited shortened links',
-    'Unlimited active API keys',
-    'Real-time detailed analytics',
-    'High-speed priority redirection',
-    'API access with zero rate-limiting'
-  ];
+  const freeFeatures = FREE_FEATURES.map((feature) => feature.label);
 
   return (
     <section id="pricing" className="px-6 py-24 scroll-mt-14 overflow-hidden">
@@ -101,7 +89,7 @@ export function PricingSection() {
             >
               Yearly
               <span className="ml-1.5 rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground leading-normal">
-                Save 25%
+                2 months free
               </span>
             </button>
           </div>
@@ -159,25 +147,32 @@ export function PricingSection() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">Premium</h3>
-                  <p className="mt-1.5 text-sm text-muted-foreground">For creators & developers.</p>
+                  <p className="mt-1.5 text-sm text-muted-foreground">For links that need to last.</p>
                 </div>
                 <Badge variant="default" className="h-6">Pro</Badge>
               </div>
               <div className="my-6">
                 <div className="flex items-baseline text-foreground">
                   <span className="text-4xl font-bold tracking-tight">
-                    {billingCycle === 'MONTHLY' ? '$10' : '$90'}
+                    {billingCycle === 'MONTHLY' ? `$${PRICING.monthly}` : `$${PRICING.yearly}`}
                   </span>
                   <span className="ml-1 text-sm text-muted-foreground">
-                    {billingCycle === 'MONTHLY' ? '/month' : '/year'}
+                    {billingCycle === 'MONTHLY' ? '/month' : `/year · $${yearlyPerMonth}/mo`}
                   </span>
                 </div>
               </div>
               <ul className="space-y-3">
-                {premiumFeatures.map((feature) => (
-                  <li key={feature} className="flex items-center gap-3 text-sm text-foreground">
-                    <IconCheck className="h-4 w-4 text-primary" />
-                    <span>{feature}</span>
+                {PRO_FEATURES.map((feature) => (
+                  <li key={feature.label} className="flex items-center gap-3 text-sm text-foreground">
+                    <IconCheck className="h-4 w-4 shrink-0 text-primary" />
+                    <span className={feature.soon ? 'text-muted-foreground' : undefined}>
+                      {feature.label}
+                    </span>
+                    {feature.soon && (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Soon
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

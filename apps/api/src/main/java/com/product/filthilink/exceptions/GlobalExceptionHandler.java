@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
@@ -53,6 +54,11 @@ public class GlobalExceptionHandler {
 
     }
 
+    @ExceptionHandler(PlanLimitExceededException.class)
+    public ResponseEntity<ApiErrorResponseDto> handlePlanLimit(PlanLimitExceededException ex, HttpServletRequest request) {
+        return build(ex.getMessage(), HttpStatus.PAYMENT_REQUIRED, request);
+    }
+
     @ExceptionHandler(BadRequest.class)
     public ResponseEntity<ApiErrorResponseDto> handleBadRequest(BadRequest ex, HttpServletRequest request) {
         return build(ex.getMessage(), HttpStatus.BAD_REQUEST, request);
@@ -61,6 +67,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceConflict.class)
     public ResponseEntity<ApiErrorResponseDto> handleConflict(ResourceConflict ex, HttpServletRequest request) {
         return build(ex.getMessage(), HttpStatus.CONFLICT, request);
+    }
+
+    /** Two users can race for the same short code; the unique constraint is the final guard. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponseDto> handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest request) {
+
+        String cause = ex.getMostSpecificCause().getMessage();
+        log.warn("Data integrity violation at {}: {}", request.getRequestURI(), cause);
+
+        if (cause != null && cause.contains("uc_links_shortcode")) {
+            return build("That short code is already taken.", HttpStatus.CONFLICT, request);
+        }
+
+        return build("That change conflicts with existing data.", HttpStatus.CONFLICT, request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)

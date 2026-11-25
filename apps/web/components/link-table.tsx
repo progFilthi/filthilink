@@ -22,6 +22,7 @@ import {
 } from "@tabler/icons-react";
 import { format } from "date-fns";
 import Link from "next/link";
+import { expiryNote } from "@/lib/link-expiry";
 
 interface LinkItem {
   id: number;
@@ -29,6 +30,7 @@ interface LinkItem {
   originalUrl: string;
   clickCount: number;
   expiresAt: string | null;
+  createdAt: string;
   status?: "active" | "expired";
 }
 
@@ -36,6 +38,7 @@ interface LinkTableProps {
   links: LinkItem[];
   className?: string;
   onCopy?: (url: string, id: number) => void;
+  onEdit?: (id: number) => void;
   onDelete?: (id: number) => void;
 }
 
@@ -43,6 +46,7 @@ export function LinkTable({
   links,
   className,
   onCopy,
+  onEdit,
   onDelete,
 }: LinkTableProps) {
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -144,9 +148,24 @@ export function LinkTable({
                 >
                   {link.status || "active"}
                 </Badge>
+                {(() => {
+                  const note = expiryNote(link.expiresAt);
+                  return note ? (
+                    <p
+                      className={cn(
+                        "mt-1 text-[11px]",
+                        note.urgent ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {note.text}
+                    </p>
+                  ) : null;
+                })()}
               </TableCell>
               <TableCell className="hidden text-right text-sm text-muted-foreground md:table-cell">
-                {format(new Date(), "MMM d, yyyy")}
+                {link.createdAt
+                  ? format(new Date(link.createdAt), "MMM d, yyyy")
+                  : "—"}
               </TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -168,6 +187,8 @@ export function LinkTable({
                     variant="ghost"
                     size="icon-xs"
                     className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => onEdit?.(link.id)}
+                    aria-label="Edit link"
                   >
                     <IconEdit className="h-3.5 w-3.5" />
                   </Button>

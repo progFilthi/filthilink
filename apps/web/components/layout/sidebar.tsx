@@ -10,6 +10,7 @@ import type { SubscriptionResponseDto } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/client";
 import { isAdmin } from "@/lib/jwt";
+import { PRICING } from "@/lib/pricing";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +41,7 @@ const navItems = [
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, email, isAuthenticated } = useAuthStore();
+  const { logout, email, isAuthenticated, accessToken } = useAuthStore();
   const [sub, setSub] = useState<SubscriptionResponseDto | null>(null);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const isPremiumActive = sub?.isPremium && sub?.status === "ACTIVE";
-  const userIsAdmin = isAdmin();
+  const userIsAdmin = isAdmin(accessToken);
 
   const allNavItems = userIsAdmin
     ? [
@@ -137,7 +138,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </div>
               <p className="mt-2 text-center text-xs font-semibold">Go Premium</p>
               <p className="mt-1 text-center text-[10px] leading-relaxed text-muted-foreground">
-                Unlimited links, API keys, and analytics.
+                Links that never expire, from ${PRICING.monthly}/month.
               </p>
               <Button asChild size="sm" className="mt-3 w-full gap-1 text-xs">
                 <Link href="/dashboard/settings" onClick={onClose}>

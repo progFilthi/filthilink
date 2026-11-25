@@ -12,9 +12,9 @@ const features = [
   },
   {
     icon: IconChartBar,
-    title: "Click analytics",
+    title: "Click tracking",
     description:
-      "Monitor your link performance with real-time metrics.",
+      "See how many times every link is clicked, all in one place.",
   },
   {
     icon: IconApi,

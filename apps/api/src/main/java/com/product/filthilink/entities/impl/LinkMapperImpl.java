@@ -31,7 +31,8 @@ public class LinkMapperImpl implements LinkMapper {
                 baseUrl + "/" +  link.getShortCode(),
                 link.getOriginalUrl(),
                 link.getClickCount(),
-                link.getExpiresAt()
+                link.getExpiresAt(),
+                link.getCreatedAt()
         );
     }
 }

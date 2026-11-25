@@ -5,15 +5,18 @@ import com.product.filthilink.entities.dtos.ApiKeyResponseDto;
 import com.product.filthilink.entities.dtos.CreateApiKeyRequestDto;
 import com.product.filthilink.entities.models.ApiKey;
 import com.product.filthilink.entities.models.User;
+import com.product.filthilink.exceptions.PlanLimitExceededException;
 import com.product.filthilink.exceptions.ResourceNotFound;
 import com.product.filthilink.exceptions.Unauthorized;
 import com.product.filthilink.repositories.apikey.ApiKeyRepository;
 import com.product.filthilink.repositories.auth.UserRepository;
 import com.product.filthilink.services.auth.CustomUserDetailsService;
+import com.product.filthilink.services.payments.PlanLimitService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
@@ -30,10 +33,20 @@ public class ApiKeyService {
     private final PasswordEncoder passwordEncoder;
     private final ApiKeyRepository apiKeyRepository;
     private final CustomUserDetailsService customUserDetailsService;
+    private final PlanLimitService planLimitService;
 
+    @Transactional
     public ApiKeyResponseDto createApiKey(String email, CreateApiKeyRequestDto dto){
-        User user = userRepository.findByEmail(email).orElseThrow(()-> new ResourceNotFound(email));
+        // Row lock serialises key creation per user so the free limit can't be raced.
+        User user = userRepository.findByEmailForUpdate(email).orElseThrow(()-> new ResourceNotFound(email));
 
+
+        if (!planLimitService.isPremium(email)
+                && apiKeyRepository.countByUserId(user.getId()) >= PlanLimitService.FREE_API_KEYS) {
+            throw new PlanLimitExceededException(
+                    "Free accounts can have " + PlanLimitService.FREE_API_KEYS
+                            + " API key. Upgrade to Pro for unlimited API keys.");
+        }
 
         String rawKey = "sk_live" +  generateSecureKey();
         String keyHash = passwordEncoder.encode(rawKey);
@@ -65,7 +78,7 @@ public class ApiKeyService {
     public List<ApiKeyListItemDto> getUserApiKeys(String email){
         User user = userRepository.findByEmail(email).orElseThrow(()-> new ResourceNotFound(email));
 
-        return apiKeyRepository.findUserById(user.getId())
+        return apiKeyRepository.findByUserId(user.getId())
                 .stream()
                 .map(key -> new ApiKeyListItemDto(
                         key.getId(),
@@ -92,16 +105,17 @@ public class ApiKeyService {
     }
 
 
+    @Transactional
     public Optional<UserDetails> validateApiKey(String rawKey ){
 
         if( rawKey == null || rawKey.length() < 12 ) return Optional.empty();
 
         String prefix = rawKey.substring(0, 12);
 
-
-
         return apiKeyRepository.findByKeyPrefix(prefix)
+                .stream()
                 .filter(key -> passwordEncoder.matches(rawKey, key.getKeyHash()))
+                .findFirst()
                 .map(key -> {
                     key.setLastUsedAt(LocalDateTime.now());
                     apiKeyRepository.save(key);

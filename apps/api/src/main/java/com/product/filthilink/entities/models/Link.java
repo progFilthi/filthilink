@@ -39,5 +39,11 @@ public class Link {
     @Column(nullable = false)
     private LocalDateTime expiresAt;
 
+    /**
+     * Soft delete marker. Deleted links are hidden from listings and redirects but stay
+     * in the table so they still count toward the monthly creation limit.
+     */
+    private LocalDateTime deletedAt;
+
 
 }

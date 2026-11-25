@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ModeToggle } from '@/components/mode-toggle';
 import { SubscriptionService } from '@/lib/api/subscription.service';
+import { PRICING, PRO_FEATURES, yearlySavingsPercent } from '@/lib/pricing';
 import type { SubscriptionResponseDto } from '@/types/api';
 import { ApiError } from '@/lib/api/client';
 import {
@@ -229,19 +230,19 @@ export default function SettingsPage() {
               <div className="rounded-xl border bg-card p-5 shadow-sm">
                 <p className="text-sm font-semibold">You are on the Free Tier</p>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Upgrade to Premium for unlimited short links, unlimited API keys, high-speed routing, and detailed click analytics.
+                  {`Free links expire after 30 days. Pro is $${PRICING.monthly}/month, keeps your links alive for good, and brings back any that have already expired.`}
                 </p>
 
                 <div className="mt-4 grid gap-y-2 gap-x-6 sm:grid-cols-2">
-                  {[
-                    'Unlimited Short Links',
-                    'Unlimited API Keys',
-                    'Real-time Analytics',
-                    '24/7 Dedicated Support',
-                  ].map((feature) => (
-                    <div key={feature} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {PRO_FEATURES.map((feature) => (
+                    <div key={feature.label} className="flex items-center gap-2 text-xs text-muted-foreground">
                       <IconCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      <span>{feature}</span>
+                      <span>{feature.label}</span>
+                      {feature.soon && (
+                        <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide">
+                          Soon
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -259,7 +260,7 @@ export default function SettingsPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Monthly ($10)
+                      {`Monthly ($${PRICING.monthly})`}
                     </button>
                     <button
                       onClick={() => setBillingCycle('YEARLY')}
@@ -269,9 +270,9 @@ export default function SettingsPage() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Yearly ($90)
+                      {`Yearly ($${PRICING.yearly})`}
                       <span className="absolute -top-2 -right-2 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-bold text-primary-foreground leading-none">
-                        -25%
+                        {`-${yearlySavingsPercent}%`}
                       </span>
                     </button>
                   </div>

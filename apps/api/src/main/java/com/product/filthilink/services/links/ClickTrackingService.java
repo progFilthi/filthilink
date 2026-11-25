@@ -12,13 +12,14 @@ public class ClickTrackingService {
 
     private final LinkRepository linkRepository;
 
+    /**
+     * Atomic UPDATE ... click_count = click_count + 1. Reading the entity and saving it
+     * back loses increments when two redirects arrive at the same time.
+     */
     @Async
     @Transactional
     public void increment( Long linkId ) {
-        linkRepository.findById(linkId).ifPresent(link -> {
-            link.setClickCount(link.getClickCount() + 1);
-            linkRepository.save(link);
-        });
+        linkRepository.incrementClickCount(linkId);
     }
 
 

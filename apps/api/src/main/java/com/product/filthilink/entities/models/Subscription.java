@@ -58,7 +58,16 @@ public class Subscription {
     }
 
     public boolean isPremium() {
-        return plans == Plan.PREMIUM && status == SubscriptionStatus.ACTIVE;
+        if (plans != Plan.PREMIUM) {
+            return false;
+        }
+        if (status == SubscriptionStatus.ACTIVE) {
+            return true;
+        }
+        // A cancelled subscription keeps Premium until the period it already paid for ends.
+        return status == SubscriptionStatus.CANCELLED
+                && currentPeriodEnd != null
+                && currentPeriodEnd.isAfter(Instant.now());
     }
 
 

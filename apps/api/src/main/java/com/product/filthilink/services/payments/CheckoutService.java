@@ -14,7 +14,6 @@ import com.product.filthilink.entities.dtos.CheckoutRequest;
 import com.product.filthilink.entities.dtos.CheckoutResponse;
 import com.product.filthilink.entities.enums.BillingCycle;
 import com.product.filthilink.entities.models.Subscription;
-import com.product.filthilink.exceptions.SubscriptionNotFoundException;
 import com.product.filthilink.repositories.payments.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,10 +28,12 @@ public class CheckoutService {
     private final DodoPaymentsClient dodoClient;
     private final DodoProperties properties;
     private final SubscriptionRepository subscriptionRepository;
+    private final SubscriptionService subscriptionService;
     @Transactional
     public CheckoutResponse createCheckout(String userId, String email, String name, BillingCycle cycle) {
-        Subscription subscription = subscriptionRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriptionNotFoundException("Subscription not found"));
+        // A brand-new account has no subscription row yet. Creating it here keeps the
+        // "Get Premium" funnel from the landing/register page working.
+        Subscription subscription = subscriptionService.findOrInitialiseSubscription(userId);
         String customerId = resolveOrCreateCustomer(userId, email, name, subscription);
         String productId = resolveProductId(cycle);
         CheckoutSessionRequest requestBody = CheckoutSessionRequest.builder()

@@ -1,0 +1,988 @@
+diff --git a/apps/api/src/main/java/com/product/filthilink/controllers/links/LinkController.java b/apps/api/src/main/java/com/product/filthilink/controllers/links/LinkController.java
+index da6cf6c..9db9ce1 100644
+--- a/apps/api/src/main/java/com/product/filthilink/controllers/links/LinkController.java
++++ b/apps/api/src/main/java/com/product/filthilink/controllers/links/LinkController.java
+@@ -32,6 +32,14 @@ public class LinkController {
+     }
+ 
+ 
++    @GetMapping("/usage")
++    public ResponseEntity<com.product.filthilink.entities.dtos.LinkUsageResponseDto> getMyUsage(@AuthenticationPrincipal UserDetails userDetails) {
++
++        return ResponseEntity.ok(linkService.getUsage(userDetails.getUsername()));
++
++    }
++
++
+     @GetMapping
+     public ResponseEntity<Page<LinkResponseDto>> getMyLinks(@PageableDefault(sort = "createdAt", size = 5) Pageable pageable,
+                                                             @AuthenticationPrincipal UserDetails userDetails) {
+diff --git a/apps/api/src/main/java/com/product/filthilink/entities/dtos/LinkUsageResponseDto.java b/apps/api/src/main/java/com/product/filthilink/entities/dtos/LinkUsageResponseDto.java
+new file mode 100644
+index 0000000..ac8826b
+--- /dev/null
++++ b/apps/api/src/main/java/com/product/filthilink/entities/dtos/LinkUsageResponseDto.java
+@@ -0,0 +1,10 @@
++package com.product.filthilink.entities.dtos;
++
++import java.time.LocalDateTime;
++
++public record LinkUsageResponseDto(
++        long used,
++        int limit,
++        boolean premium,
++        LocalDateTime resetsAt
++) {}
+diff --git a/apps/api/src/main/java/com/product/filthilink/entities/models/Subscription.java b/apps/api/src/main/java/com/product/filthilink/entities/models/Subscription.java
+index 81733e1..5c3e2fc 100644
+--- a/apps/api/src/main/java/com/product/filthilink/entities/models/Subscription.java
++++ b/apps/api/src/main/java/com/product/filthilink/entities/models/Subscription.java
+@@ -58,7 +58,16 @@ public class Subscription {
+     }
+ 
+     public boolean isPremium() {
+-        return plans == Plan.PREMIUM && status == SubscriptionStatus.ACTIVE;
++        if (plans != Plan.PREMIUM) {
++            return false;
++        }
++        if (status == SubscriptionStatus.ACTIVE) {
++            return true;
++        }
++        // A cancelled subscription keeps Premium until the period it already paid for ends.
++        return status == SubscriptionStatus.CANCELLED
++                && currentPeriodEnd != null
++                && currentPeriodEnd.isAfter(Instant.now());
+     }
+ 
+ 
+diff --git a/apps/api/src/main/java/com/product/filthilink/exceptions/GlobalExceptionHandler.java b/apps/api/src/main/java/com/product/filthilink/exceptions/GlobalExceptionHandler.java
+index 413db0b..8ad7fcd 100644
+--- a/apps/api/src/main/java/com/product/filthilink/exceptions/GlobalExceptionHandler.java
++++ b/apps/api/src/main/java/com/product/filthilink/exceptions/GlobalExceptionHandler.java
+@@ -53,6 +53,11 @@ public class GlobalExceptionHandler {
+ 
+     }
+ 
++    @ExceptionHandler(PlanLimitExceededException.class)
++    public ResponseEntity<ApiErrorResponseDto> handlePlanLimit(PlanLimitExceededException ex, HttpServletRequest request) {
++        return build(ex.getMessage(), HttpStatus.PAYMENT_REQUIRED, request);
++    }
++
+     @ExceptionHandler(BadRequest.class)
+     public ResponseEntity<ApiErrorResponseDto> handleBadRequest(BadRequest ex, HttpServletRequest request) {
+         return build(ex.getMessage(), HttpStatus.BAD_REQUEST, request);
+diff --git a/apps/api/src/main/java/com/product/filthilink/exceptions/PlanLimitExceededException.java b/apps/api/src/main/java/com/product/filthilink/exceptions/PlanLimitExceededException.java
+new file mode 100644
+index 0000000..ec35154
+--- /dev/null
++++ b/apps/api/src/main/java/com/product/filthilink/exceptions/PlanLimitExceededException.java
+@@ -0,0 +1,11 @@
++package com.product.filthilink.exceptions;
++
++/**
++ * Thrown when an account has used everything its plan allows (links this month, API keys).
++ * Mapped to HTTP 402 so the web app can show an upgrade prompt instead of a generic error.
++ */
++public class PlanLimitExceededException extends RuntimeException {
++    public PlanLimitExceededException(String message) {
++        super(message);
++    }
++}
+diff --git a/apps/api/src/main/java/com/product/filthilink/repositories/apikey/ApiKeyRepository.java b/apps/api/src/main/java/com/product/filthilink/repositories/apikey/ApiKeyRepository.java
+index 6b984f6..6f27ba5 100644
+--- a/apps/api/src/main/java/com/product/filthilink/repositories/apikey/ApiKeyRepository.java
++++ b/apps/api/src/main/java/com/product/filthilink/repositories/apikey/ApiKeyRepository.java
+@@ -8,9 +8,11 @@ import java.util.Optional;
+ 
+ public interface ApiKeyRepository extends JpaRepository<ApiKey, Long> {
+ 
++    // Was findUserById(...), which Spring Data parses as findById(...): it matched the API key whose
++    // own id equals the user id, not the keys that belong to the user.
++    List<ApiKey> findByUserId(Long userId);
+ 
+-     List<ApiKey> findUserById(Long userId);
++    long countByUserId(Long userId);
+ 
+-
+-     Optional<ApiKey> findByKeyPrefix(String prefix);
++    Optional<ApiKey> findByKeyPrefix(String prefix);
+ }
+diff --git a/apps/api/src/main/java/com/product/filthilink/repositories/links/LinkRepository.java b/apps/api/src/main/java/com/product/filthilink/repositories/links/LinkRepository.java
+index ee0e1ea..c5b2d29 100644
+--- a/apps/api/src/main/java/com/product/filthilink/repositories/links/LinkRepository.java
++++ b/apps/api/src/main/java/com/product/filthilink/repositories/links/LinkRepository.java
+@@ -17,6 +17,13 @@ public interface LinkRepository extends JpaRepository<Link, Long> {
+ 
+     long countByUserId(Long userId);
+ 
++    long countByUserIdAndCreatedAtGreaterThanEqual(Long userId, java.time.LocalDateTime since);
++
++    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
++    @Query("UPDATE Link l SET l.expiresAt = :expiresAt WHERE l.user.id = :userId")
++    int extendExpiryByUserId(@org.springframework.data.repository.query.Param("userId") Long userId,
++                             @org.springframework.data.repository.query.Param("expiresAt") java.time.LocalDateTime expiresAt);
++
+     @Query("SELECT COALESCE(SUM(l.clickCount), 0) FROM Link l WHERE l.user.id = :userId")
+     long sumClickCountByUserId(Long userId);
+ 
+diff --git a/apps/api/src/main/java/com/product/filthilink/services/apiKey/ApiKeyService.java b/apps/api/src/main/java/com/product/filthilink/services/apiKey/ApiKeyService.java
+index 19af064..9fd1d55 100644
+--- a/apps/api/src/main/java/com/product/filthilink/services/apiKey/ApiKeyService.java
++++ b/apps/api/src/main/java/com/product/filthilink/services/apiKey/ApiKeyService.java
+@@ -30,11 +30,19 @@ public class ApiKeyService {
+     private final PasswordEncoder passwordEncoder;
+     private final ApiKeyRepository apiKeyRepository;
+     private final CustomUserDetailsService customUserDetailsService;
++    private final com.product.filthilink.services.payments.PlanLimitService planLimitService;
+ 
+     public ApiKeyResponseDto createApiKey(String email, CreateApiKeyRequestDto dto){
+         User user = userRepository.findByEmail(email).orElseThrow(()-> new ResourceNotFound(email));
+ 
+ 
++        if (!planLimitService.isPremium(email)
++                && apiKeyRepository.countByUserId(user.getId()) >= com.product.filthilink.services.payments.PlanLimitService.FREE_API_KEYS) {
++            throw new com.product.filthilink.exceptions.PlanLimitExceededException(
++                    "Free accounts can have " + com.product.filthilink.services.payments.PlanLimitService.FREE_API_KEYS
++                            + " API key. Upgrade to Pro for unlimited API keys.");
++        }
++
+         String rawKey = "sk_live" +  generateSecureKey();
+         String keyHash = passwordEncoder.encode(rawKey);
+         String keyPrefix = rawKey.substring(0, 12);
+@@ -65,7 +73,7 @@ public class ApiKeyService {
+     public List<ApiKeyListItemDto> getUserApiKeys(String email){
+         User user = userRepository.findByEmail(email).orElseThrow(()-> new ResourceNotFound(email));
+ 
+-        return apiKeyRepository.findUserById(user.getId())
++        return apiKeyRepository.findByUserId(user.getId())
+                 .stream()
+                 .map(key -> new ApiKeyListItemDto(
+                         key.getId(),
+diff --git a/apps/api/src/main/java/com/product/filthilink/services/links/LinkService.java b/apps/api/src/main/java/com/product/filthilink/services/links/LinkService.java
+index 4db13d2..5308a08 100644
+--- a/apps/api/src/main/java/com/product/filthilink/services/links/LinkService.java
++++ b/apps/api/src/main/java/com/product/filthilink/services/links/LinkService.java
+@@ -2,13 +2,16 @@ package com.product.filthilink.services.links;
+ 
+ import com.product.filthilink.entities.dtos.CreateLinkRequestDto;
+ import com.product.filthilink.entities.dtos.LinkResponseDto;
++import com.product.filthilink.entities.dtos.LinkUsageResponseDto;
+ import com.product.filthilink.entities.mappers.LinkMapper;
+ import com.product.filthilink.entities.models.Link;
+ import com.product.filthilink.entities.models.User;
+ import com.product.filthilink.exceptions.LinkExpiredException;
++import com.product.filthilink.exceptions.PlanLimitExceededException;
+ import com.product.filthilink.exceptions.ResourceNotFound;
+ import com.product.filthilink.repositories.auth.UserRepository;
+ import com.product.filthilink.repositories.links.LinkRepository;
++import com.product.filthilink.services.payments.PlanLimitService;
+ import lombok.RequiredArgsConstructor;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.data.domain.Pageable;
+@@ -18,6 +21,7 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ import java.security.SecureRandom;
++import java.time.LocalDate;
+ import java.time.LocalDateTime;
+ import java.util.Random;
+ 
+@@ -29,6 +33,11 @@ public class LinkService {
+     private final LinkMapper linkMapper;
+     private final ClickTrackingService clickTrackingService;
+     private final UserRepository userRepository;
++    private final PlanLimitService planLimitService;
++
++    private static final long FREE_LINK_DAYS = 30;
++    // The expires_at column is NOT NULL, so "never expires" is stored as a date far in the future.
++    private static final long PERMANENT_LINK_YEARS = 100;
+ 
+     private static final String base62 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+     private static final int SHORT_CODE_LENGTH = 6;
+@@ -42,9 +51,21 @@ public class LinkService {
+         User user = userRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException(email));
+ 
+ 
++        boolean premium = planLimitService.isPremium(email);
++        int limit = planLimitService.monthlyLinkLimit(premium);
++        long usedThisMonth = linkRepository.countByUserIdAndCreatedAtGreaterThanEqual(user.getId(), startOfCurrentMonth());
++
++        if (usedThisMonth >= limit) {
++            throw new PlanLimitExceededException(premium
++                    ? "You've reached this month's limit of " + limit + " new links."
++                    : "You've used all " + limit + " free links this month. Upgrade to Pro to keep creating links, and keep them forever.");
++        }
++
+         String shortCode = generateUniqueShortCode();
+ 
+-        LocalDateTime expiresAt = LocalDateTime.now().plusDays(30);
++        LocalDateTime expiresAt = premium
++                ? LocalDateTime.now().plusYears(PERMANENT_LINK_YEARS)
++                : LocalDateTime.now().plusDays(FREE_LINK_DAYS);
+ 
+         Link link = linkMapper.toEntity(dto, shortCode, 0, expiresAt);
+         link.setUser(user);
+@@ -65,6 +86,37 @@ public class LinkService {
+     }
+ 
+ 
++    @Transactional(readOnly = true)
++    public LinkUsageResponseDto getUsage(String email) {
++
++        User user = userRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException(email));
++
++        boolean premium = planLimitService.isPremium(email);
++        LocalDateTime monthStart = startOfCurrentMonth();
++        long used = linkRepository.countByUserIdAndCreatedAtGreaterThanEqual(user.getId(), monthStart);
++
++        return new LinkUsageResponseDto(used, planLimitService.monthlyLinkLimit(premium), premium, monthStart.plusMonths(1));
++
++    }
++
++    /**
++     * Called when a subscription becomes active. Every link the user owns stops expiring,
++     * including links that already lapsed on the free plan. Deliberately lenient: a webhook
++     * must never fail because the user row can't be found.
++     */
++    @Transactional
++    public void makeLinksPermanent(String email) {
++
++        userRepository.findByEmail(email).ifPresent(user ->
++                linkRepository.extendExpiryByUserId(user.getId(), LocalDateTime.now().plusYears(PERMANENT_LINK_YEARS)));
++
++    }
++
++    private LocalDateTime startOfCurrentMonth() {
++        return LocalDate.now().withDayOfMonth(1).atStartOfDay();
++    }
++
++
+     public String resolveLink(String shortCode ) {
+ 
+         Link link = linkRepository.findByShortCode(shortCode)
+diff --git a/apps/api/src/main/java/com/product/filthilink/services/payments/PlanLimitService.java b/apps/api/src/main/java/com/product/filthilink/services/payments/PlanLimitService.java
+new file mode 100644
+index 0000000..e95b8f2
+--- /dev/null
++++ b/apps/api/src/main/java/com/product/filthilink/services/payments/PlanLimitService.java
+@@ -0,0 +1,32 @@
++package com.product.filthilink.services.payments;
++
++import com.product.filthilink.entities.models.Subscription;
++import com.product.filthilink.repositories.payments.SubscriptionRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++
++/**
++ * Single place that knows what each plan allows. Keep these numbers in step with
++ * apps/web/lib/pricing.ts, which is what the pricing cards display.
++ */
++@Service
++@RequiredArgsConstructor
++public class PlanLimitService {
++
++    public static final int FREE_MONTHLY_LINKS = 5;
++    public static final int PREMIUM_MONTHLY_LINKS = 1000;
++    public static final int FREE_API_KEYS = 1;
++
++    private final SubscriptionRepository subscriptionRepository;
++
++    /** Subscriptions are keyed by the user's email. No subscription row means the free plan. */
++    public boolean isPremium(String email) {
++        return subscriptionRepository.findByUserId(email)
++                .map(Subscription::isPremium)
++                .orElse(false);
++    }
++
++    public int monthlyLinkLimit(boolean premium) {
++        return premium ? PREMIUM_MONTHLY_LINKS : FREE_MONTHLY_LINKS;
++    }
++}
+diff --git a/apps/api/src/main/java/com/product/filthilink/services/payments/WebhookService.java b/apps/api/src/main/java/com/product/filthilink/services/payments/WebhookService.java
+index 43031e5..aa40295 100644
+--- a/apps/api/src/main/java/com/product/filthilink/services/payments/WebhookService.java
++++ b/apps/api/src/main/java/com/product/filthilink/services/payments/WebhookService.java
+@@ -18,6 +18,7 @@ import java.time.Instant;
+ public class WebhookService {
+     private final SubscriptionRepository subscriptionRepository;
+     private final ProcessedEventRepository processedEventRepository;
++    private final com.product.filthilink.services.links.LinkService linkService;
+     @Transactional
+     public void process(String eventType, JsonNode data, String eventId) {
+         if (processedEventRepository.existsByEventId(eventId)) {
+@@ -44,6 +45,8 @@ public class WebhookService {
+         sub.setDodoSubscriptionId(subscriptionId);
+         sub.setPlans(Plan.PREMIUM);
+         sub.setStatus(SubscriptionStatus.ACTIVE);
++        // Upgrading rescues every link the user has, including ones that already expired.
++        linkService.makeLinksPermanent(sub.getUserId());
+         if (nextBilling != null) {
+             sub.setCurrentPeriodEnd(Instant.parse(nextBilling));
+         }
+diff --git a/apps/web/app/(dashboard)/dashboard/links/page.tsx b/apps/web/app/(dashboard)/dashboard/links/page.tsx
+index ce0a519..d4b22d6 100644
+--- a/apps/web/app/(dashboard)/dashboard/links/page.tsx
++++ b/apps/web/app/(dashboard)/dashboard/links/page.tsx
+@@ -22,11 +22,16 @@ import {
+ import { Label } from "@/components/ui/label";
+ import { Skeleton } from "@/components/ui/skeleton";
+ import { LinksService } from "@/lib/api/links.service";
+-import type { LinkResponseDto } from "@/types/api";
+-import { IconPlus, IconSearch, IconFilter } from "@tabler/icons-react";
++import { ApiError } from "@/lib/api/client";
++import type { LinkResponseDto, LinkUsageResponseDto } from "@/types/api";
++import { IconPlus, IconSearch, IconFilter, IconClock, IconSparkles } from "@tabler/icons-react";
+ import { toast } from "sonner";
++import { format } from "date-fns";
+ import { LinkTable } from "@/components/link-table";
++import { UpgradeDialog } from "@/components/upgrade-dialog";
+ import { LoadingSpinner } from "@/components/ui/loading-spinner";
++import { daysUntilExpiry, isExpired } from "@/lib/link-expiry";
++import { PRICING } from "@/lib/pricing";
+ 
+ export default function LinksPage() {
+   const [links, setLinks] = useState<LinkResponseDto[]>([]);
+@@ -36,6 +41,22 @@ export default function LinksPage() {
+   const [isCreating, setIsCreating] = useState(false);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [statusFilter, setStatusFilter] = useState("all");
++  const [usage, setUsage] = useState<LinkUsageResponseDto | null>(null);
++  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
++  const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>();
++
++  const openUpgrade = (message?: string) => {
++    setUpgradeMessage(message);
++    setIsUpgradeOpen(true);
++  };
++
++  const refreshUsage = () => {
++    LinksService.getUsage()
++      .then(setUsage)
++      .catch(() => {});
++  };
++
++  const atFreeLimit = !!usage && !usage.premium && usage.used >= usage.limit;
+ 
+   useEffect(() => {
+     let cancelled = false;
+@@ -43,9 +64,13 @@ export default function LinksPage() {
+     async function load() {
+       setIsLoading(true);
+       try {
+-        const data = await LinksService.getLinks(0, 100);
++        const [data, usageData] = await Promise.all([
++          LinksService.getLinks(0, 100),
++          LinksService.getUsage().catch(() => null),
++        ]);
+         if (!cancelled) {
+           setLinks(data.content || []);
++          setUsage(usageData);
+         }
+       } catch {
+         if (!cancelled) {
+@@ -76,8 +101,19 @@ export default function LinksPage() {
+       setNewUrl("");
+       setIsCreateOpen(false);
+       toast.success("Link created successfully.");
+-    } catch {
+-      toast.error("Failed to create link.");
++      refreshUsage();
++    } catch (err) {
++      if (err instanceof ApiError && err.status === 402) {
++        setIsCreateOpen(false);
++        refreshUsage();
++        if (usage?.premium) {
++          toast.error(err.message);
++        } else {
++          openUpgrade(err.message);
++        }
++      } else {
++        toast.error("Failed to create link.");
++      }
+     } finally {
+       setIsCreating(false);
+     }
+@@ -89,11 +125,32 @@ export default function LinksPage() {
+       link.shortUrl?.toLowerCase().includes(searchQuery.toLowerCase());
+     const matchesStatus =
+       statusFilter === "all" ||
+-      (statusFilter === "active" && !link.expiresAt) ||
+-      (statusFilter === "expired" && link.expiresAt);
++      (statusFilter === "active" && !isExpired(link.expiresAt)) ||
++      (statusFilter === "expired" && isExpired(link.expiresAt));
+     return matchesSearch && matchesStatus;
+   });
+ 
++  const expiredCount = links.filter((l) => isExpired(l.expiresAt)).length;
++  const expiringSoonCount = links.filter(
++    (l) => !!l.expiresAt && !isExpired(l.expiresAt) && daysUntilExpiry(l.expiresAt) <= 7,
++  ).length;
++  const showExpiryBanner =
++    !!usage && !usage.premium && (expiredCount > 0 || expiringSoonCount > 0);
++
++  const expiryBannerText = [
++    expiredCount > 0
++      ? `${expiredCount} of your links ${expiredCount === 1 ? "has" : "have"} expired.`
++      : null,
++    expiringSoonCount > 0
++      ? `${expiringSoonCount} ${expiringSoonCount === 1 ? "link expires" : "links expire"} within 7 days.`
++      : null,
++    expiredCount > 0
++      ? "Upgrade and they go live again, and they never expire."
++      : "Upgrade to keep them forever.",
++  ]
++    .filter(Boolean)
++    .join(" ");
++
+   return (
+     <div className="mx-auto max-w-5xl space-y-6">
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+@@ -104,7 +161,18 @@ export default function LinksPage() {
+           </p>
+         </div>
+ 
+-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
++        <Dialog
++          open={isCreateOpen}
++          onOpenChange={(open) => {
++            if (open && atFreeLimit) {
++              openUpgrade(
++                `You've used all ${usage?.limit} free links this month. Upgrade to keep creating links, and keep them forever.`,
++              );
++              return;
++            }
++            setIsCreateOpen(open);
++          }}
++        >
+           <DialogTrigger asChild>
+             <Button size="sm" className="gap-1.5">
+               <IconPlus className="h-4 w-4" />
+@@ -153,6 +221,46 @@ export default function LinksPage() {
+         </Dialog>
+       </div>
+ 
++      {usage && !usage.premium && (
++        <div className="rounded-xl border bg-card p-4">
++          <div className="flex items-center justify-between gap-4">
++            <div className="min-w-0">
++              <p className="text-sm font-medium">
++                {usage.used} of {usage.limit} free links used this month
++              </p>
++              <p className="mt-0.5 text-xs text-muted-foreground">
++                {`Resets ${format(new Date(usage.resetsAt), "MMM d")}. Pro includes up to ${PRICING.proLinksPerMonth.toLocaleString("en-US")} a month, and links that never expire.`}
++              </p>
++            </div>
++            <Button
++              size="sm"
++              variant={atFreeLimit ? "default" : "outline"}
++              className="shrink-0 gap-1.5"
++              onClick={() => openUpgrade()}
++            >
++              <IconSparkles className="h-3.5 w-3.5" />
++              {`Go Pro · $${PRICING.monthly}/mo`}
++            </Button>
++          </div>
++          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
++            <div
++              className="h-full rounded-full bg-primary transition-all"
++              style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
++            />
++          </div>
++        </div>
++      )}
++
++      {showExpiryBanner && (
++        <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
++          <IconClock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
++          <p className="flex-1 text-sm">{expiryBannerText}</p>
++          <Button size="sm" className="shrink-0" onClick={() => openUpgrade()}>
++            Keep my links
++          </Button>
++        </div>
++      )}
++
+       {!isLoading && links.length > 0 && (
+         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+           <div className="relative max-w-sm flex-1">
+@@ -199,13 +307,19 @@ export default function LinksPage() {
+             originalUrl: l.originalUrl,
+             clickCount: l.clickCount,
+             expiresAt: l.expiresAt,
+-            status: l.expiresAt ? "expired" : "active",
++            status: isExpired(l.expiresAt) ? "expired" : "active",
+           }))}
+           onCopy={() => {
+             toast.success("Copied to clipboard");
+           }}
+         />
+       )}
++
++      <UpgradeDialog
++        open={isUpgradeOpen}
++        onOpenChange={setIsUpgradeOpen}
++        description={upgradeMessage}
++      />
+     </div>
+   );
+ }
+diff --git a/apps/web/app/(dashboard)/dashboard/settings/page.tsx b/apps/web/app/(dashboard)/dashboard/settings/page.tsx
+index 6de7aad..38700f8 100644
+--- a/apps/web/app/(dashboard)/dashboard/settings/page.tsx
++++ b/apps/web/app/(dashboard)/dashboard/settings/page.tsx
+@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
+ import { Button } from '@/components/ui/button';
+ import { ModeToggle } from '@/components/mode-toggle';
+ import { SubscriptionService } from '@/lib/api/subscription.service';
++import { PRICING, PRO_FEATURES, yearlySavingsPercent } from '@/lib/pricing';
+ import type { SubscriptionResponseDto } from '@/types/api';
+ import { ApiError } from '@/lib/api/client';
+ import {
+@@ -229,19 +230,19 @@ export default function SettingsPage() {
+               <div className="rounded-xl border bg-card p-5 shadow-sm">
+                 <p className="text-sm font-semibold">You are on the Free Tier</p>
+                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+-                  Upgrade to Premium for unlimited short links, unlimited API keys, high-speed routing, and detailed click analytics.
++                  {`Free links expire after 30 days. Pro is $${PRICING.monthly}/month, keeps your links alive for good, and brings back any that have already expired.`}
+                 </p>
+ 
+                 <div className="mt-4 grid gap-y-2 gap-x-6 sm:grid-cols-2">
+-                  {[
+-                    'Unlimited Short Links',
+-                    'Unlimited API Keys',
+-                    'Real-time Analytics',
+-                    '24/7 Dedicated Support',
+-                  ].map((feature) => (
+-                    <div key={feature} className="flex items-center gap-2 text-xs text-muted-foreground">
++                  {PRO_FEATURES.map((feature) => (
++                    <div key={feature.label} className="flex items-center gap-2 text-xs text-muted-foreground">
+                       <IconCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
+-                      <span>{feature}</span>
++                      <span>{feature.label}</span>
++                      {feature.soon && (
++                        <span className="rounded bg-muted px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide">
++                          Soon
++                        </span>
++                      )}
+                     </div>
+                   ))}
+                 </div>
+@@ -259,7 +260,7 @@ export default function SettingsPage() {
+                           : 'text-muted-foreground hover:text-foreground'
+                       }`}
+                     >
+-                      Monthly ($10)
++                      {`Monthly ($${PRICING.monthly})`}
+                     </button>
+                     <button
+                       onClick={() => setBillingCycle('YEARLY')}
+@@ -269,9 +270,9 @@ export default function SettingsPage() {
+                           : 'text-muted-foreground hover:text-foreground'
+                       }`}
+                     >
+-                      Yearly ($90)
++                      {`Yearly ($${PRICING.yearly})`}
+                       <span className="absolute -top-2 -right-2 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-bold text-primary-foreground leading-none">
+-                        -25%
++                        {`-${yearlySavingsPercent}%`}
+                       </span>
+                     </button>
+                   </div>
+diff --git a/apps/web/components/landing/pricing-section.tsx b/apps/web/components/landing/pricing-section.tsx
+index 13f5fbc..57c9874 100644
+--- a/apps/web/components/landing/pricing-section.tsx
++++ b/apps/web/components/landing/pricing-section.tsx
+@@ -10,6 +10,7 @@ import { toast } from 'sonner';
+ import { useRouter } from 'next/navigation';
+ import { Badge } from '@/components/ui/badge';
+ import { motion } from 'framer-motion';
++import { FREE_FEATURES, PRICING, PRO_FEATURES, yearlyPerMonth } from '@/lib/pricing';
+ 
+ export function PricingSection() {
+   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+@@ -48,20 +49,7 @@ export function PricingSection() {
+     }
+   };
+ 
+-  const freeFeatures = [
+-    '20 links per month',
+-    'No Api Key Generation',
+-    'Basic analytics',
+-    'Standard redirection',
+-  ];
+-
+-  const premiumFeatures = [
+-    'Unlimited shortened links',
+-    'Unlimited active API keys',
+-    'Real-time detailed analytics',
+-    'High-speed priority redirection',
+-    'API access with zero rate-limiting'
+-  ];
++  const freeFeatures = FREE_FEATURES.map((feature) => feature.label);
+ 
+   return (
+     <section id="pricing" className="px-6 py-24 scroll-mt-14 overflow-hidden">
+@@ -101,7 +89,7 @@ export function PricingSection() {
+             >
+               Yearly
+               <span className="ml-1.5 rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold text-primary-foreground leading-normal">
+-                Save 25%
++                2 months free
+               </span>
+             </button>
+           </div>
+@@ -159,25 +147,32 @@ export function PricingSection() {
+               <div className="mb-4 flex items-center justify-between">
+                 <div>
+                   <h3 className="text-lg font-semibold text-foreground">Premium</h3>
+-                  <p className="mt-1.5 text-sm text-muted-foreground">For creators & developers.</p>
++                  <p className="mt-1.5 text-sm text-muted-foreground">For links that need to last.</p>
+                 </div>
+                 <Badge variant="default" className="h-6">Pro</Badge>
+               </div>
+               <div className="my-6">
+                 <div className="flex items-baseline text-foreground">
+                   <span className="text-4xl font-bold tracking-tight">
+-                    {billingCycle === 'MONTHLY' ? '$10' : '$90'}
++                    {billingCycle === 'MONTHLY' ? `$${PRICING.monthly}` : `$${PRICING.yearly}`}
+                   </span>
+                   <span className="ml-1 text-sm text-muted-foreground">
+-                    {billingCycle === 'MONTHLY' ? '/month' : '/year'}
++                    {billingCycle === 'MONTHLY' ? '/month' : `/year · $${yearlyPerMonth}/mo`}
+                   </span>
+                 </div>
+               </div>
+               <ul className="space-y-3">
+-                {premiumFeatures.map((feature) => (
+-                  <li key={feature} className="flex items-center gap-3 text-sm text-foreground">
+-                    <IconCheck className="h-4 w-4 text-primary" />
+-                    <span>{feature}</span>
++                {PRO_FEATURES.map((feature) => (
++                  <li key={feature.label} className="flex items-center gap-3 text-sm text-foreground">
++                    <IconCheck className="h-4 w-4 shrink-0 text-primary" />
++                    <span className={feature.soon ? 'text-muted-foreground' : undefined}>
++                      {feature.label}
++                    </span>
++                    {feature.soon && (
++                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
++                        Soon
++                      </span>
++                    )}
+                   </li>
+                 ))}
+               </ul>
+diff --git a/apps/web/components/layout/sidebar.tsx b/apps/web/components/layout/sidebar.tsx
+index 929f98d..dbd4099 100644
+--- a/apps/web/components/layout/sidebar.tsx
++++ b/apps/web/components/layout/sidebar.tsx
+@@ -137,7 +137,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
+               </div>
+               <p className="mt-2 text-center text-xs font-semibold">Go Premium</p>
+               <p className="mt-1 text-center text-[10px] leading-relaxed text-muted-foreground">
+-                Unlimited links, API keys, and analytics.
++                Links that never expire, from $3/month.
+               </p>
+               <Button asChild size="sm" className="mt-3 w-full gap-1 text-xs">
+                 <Link href="/dashboard/settings" onClick={onClose}>
+diff --git a/apps/web/components/link-table.tsx b/apps/web/components/link-table.tsx
+index eed4da7..77193af 100644
+--- a/apps/web/components/link-table.tsx
++++ b/apps/web/components/link-table.tsx
+@@ -22,6 +22,7 @@ import {
+ } from "@tabler/icons-react";
+ import { format } from "date-fns";
+ import Link from "next/link";
++import { expiryNote } from "@/lib/link-expiry";
+ 
+ interface LinkItem {
+   id: number;
+@@ -144,6 +145,19 @@ export function LinkTable({
+                 >
+                   {link.status || "active"}
+                 </Badge>
++                {(() => {
++                  const note = expiryNote(link.expiresAt);
++                  return note ? (
++                    <p
++                      className={cn(
++                        "mt-1 text-[11px]",
++                        note.urgent ? "text-primary" : "text-muted-foreground",
++                      )}
++                    >
++                      {note.text}
++                    </p>
++                  ) : null;
++                })()}
+               </TableCell>
+               <TableCell className="hidden text-right text-sm text-muted-foreground md:table-cell">
+                 {format(new Date(), "MMM d, yyyy")}
+diff --git a/apps/web/components/upgrade-dialog.tsx b/apps/web/components/upgrade-dialog.tsx
+new file mode 100644
+index 0000000..3e2555c
+--- /dev/null
++++ b/apps/web/components/upgrade-dialog.tsx
+@@ -0,0 +1,132 @@
++'use client';
++
++import { useState } from 'react';
++import { toast } from 'sonner';
++import { IconCheck } from '@tabler/icons-react';
++import { Button } from '@/components/ui/button';
++import {
++  Dialog,
++  DialogContent,
++  DialogDescription,
++  DialogFooter,
++  DialogHeader,
++  DialogTitle,
++} from '@/components/ui/dialog';
++import { LoadingSpinner } from '@/components/ui/loading-spinner';
++import { SubscriptionService } from '@/lib/api/subscription.service';
++import { useAuthStore } from '@/store/auth-store';
++import {
++  PRICING,
++  PRO_FEATURES,
++  yearlyPerMonth,
++  yearlySavingsPercent,
++} from '@/lib/pricing';
++import { cn } from '@/lib/utils';
++
++interface UpgradeDialogProps {
++  open: boolean;
++  onOpenChange: (open: boolean) => void;
++  /** Why the dialog opened, e.g. the message the API sent when a limit was hit. */
++  description?: string;
++}
++
++export function UpgradeDialog({ open, onOpenChange, description }: UpgradeDialogProps) {
++  const { email } = useAuthStore();
++  const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
++  const [isLoading, setIsLoading] = useState(false);
++
++  const handleUpgrade = async () => {
++    if (!email) {
++      toast.error('Email address not found. Please log in again.');
++      return;
++    }
++
++    setIsLoading(true);
++    const toastId = toast.loading('Initiating secure checkout...');
++
++    try {
++      const response = await SubscriptionService.createCheckout(email, { billingCycle });
++      if (response.checkoutUrl) {
++        toast.success('Redirecting to checkout...', { id: toastId });
++        window.location.href = response.checkoutUrl;
++      } else {
++        throw new Error('No checkout URL returned');
++      }
++    } catch (err: unknown) {
++      console.error(err);
++      const message =
++        err instanceof Error ? err.message : 'Failed to initiate checkout. Please try again.';
++      toast.error(message, { id: toastId });
++    } finally {
++      setIsLoading(false);
++    }
++  };
++
++  const price =
++    billingCycle === 'MONTHLY'
++      ? `$${PRICING.monthly}/month`
++      : `$${PRICING.yearly}/year ($${yearlyPerMonth}/mo)`;
++
++  return (
++    <Dialog open={open} onOpenChange={onOpenChange}>
++      <DialogContent>
++        <DialogHeader>
++          <DialogTitle>Keep your links for good</DialogTitle>
++          <DialogDescription>
++            {description ??
++              'Pro links never expire, and upgrading brings back any links that have already expired.'}
++          </DialogDescription>
++        </DialogHeader>
++
++        <div className="space-y-4 py-2">
++          <div className="inline-flex items-center gap-0.5 rounded-lg border bg-muted p-0.5">
++            {(['MONTHLY', 'YEARLY'] as const).map((cycle) => (
++              <button
++                key={cycle}
++                type="button"
++                onClick={() => setBillingCycle(cycle)}
++                className={cn(
++                  'rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer',
++                  billingCycle === cycle
++                    ? 'bg-card text-foreground shadow-sm'
++                    : 'text-muted-foreground hover:text-foreground',
++                )}
++              >
++                {cycle === 'MONTHLY' ? 'Monthly' : `Yearly (-${yearlySavingsPercent}%)`}
++              </button>
++            ))}
++          </div>
++
++          <ul className="space-y-2">
++            {PRO_FEATURES.map((feature) => (
++              <li key={feature.label} className="flex items-center gap-2.5 text-sm">
++                <IconCheck className="h-4 w-4 shrink-0 text-primary" />
++                <span className={feature.soon ? 'text-muted-foreground' : undefined}>
++                  {feature.label}
++                </span>
++                {feature.soon && (
++                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
++                    Soon
++                  </span>
++                )}
++              </li>
++            ))}
++          </ul>
++        </div>
++
++        <DialogFooter>
++          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
++            Maybe later
++          </Button>
++          <Button onClick={handleUpgrade} disabled={isLoading} className="gap-2">
++            {isLoading ? (
++              <LoadingSpinner className="text-primary-foreground" />
++            ) : (
++              `Upgrade · ${price}`
++            )}
++          </Button>
++        </DialogFooter>
++      </DialogContent>
++    </Dialog>
++  );
++}
+diff --git a/apps/web/lib/api/links.service.ts b/apps/web/lib/api/links.service.ts
+index 07daa52..e1d42bc 100644
+--- a/apps/web/lib/api/links.service.ts
++++ b/apps/web/lib/api/links.service.ts
+@@ -2,6 +2,7 @@ import { fetchClient } from './client';
+ import type { 
+   CreateLinkRequestDto, 
+   LinkResponseDto,
++  LinkUsageResponseDto,
+   PagedModelLinkResponseDto
+ } from '@/types/api';
+ 
+@@ -13,6 +14,12 @@ export const LinksService = {
+     });
+   },
+   
++  getUsage: () => {
++    return fetchClient<LinkUsageResponseDto>('/api/v1/links/usage', {
++      method: 'GET',
++    });
++  },
++
+   getLinks: (page = 0, size = 100) => {
+     return fetchClient<PagedModelLinkResponseDto>('/api/v1/links?page=' + page + '&size=' + size, {
+       method: 'GET',
+diff --git a/apps/web/lib/link-expiry.ts b/apps/web/lib/link-expiry.ts
+new file mode 100644
+index 0000000..9c28c80
+--- /dev/null
++++ b/apps/web/lib/link-expiry.ts
+@@ -0,0 +1,29 @@
++const DAY_MS = 86_400_000;
++
++/** Pro links are stored with an expiry roughly 100 years out; anything past 10 years counts as permanent. */
++const PERMANENT_AFTER_DAYS = 3650;
++
++export function isExpired(expiresAt: string | null): boolean {
++  return !!expiresAt && new Date(expiresAt).getTime() < Date.now();
++}
++
++export function daysUntilExpiry(expiresAt: string): number {
++  return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / DAY_MS);
++}
++
++export function isPermanent(expiresAt: string): boolean {
++  return daysUntilExpiry(expiresAt) > PERMANENT_AFTER_DAYS;
++}
++
++export function expiryNote(
++  expiresAt: string | null,
++): { text: string; urgent: boolean } | null {
++  if (!expiresAt) return null;
++  if (isExpired(expiresAt)) return { text: 'Expired', urgent: true };
++  if (isPermanent(expiresAt)) return { text: 'Never expires', urgent: false };
++  const days = daysUntilExpiry(expiresAt);
++  return {
++    text: days <= 1 ? 'Expires within a day' : `Expires in ${days} days`,
++    urgent: days <= 7,
++  };
++}
+diff --git a/apps/web/lib/pricing.ts b/apps/web/lib/pricing.ts
+new file mode 100644
+index 0000000..304d769
+--- /dev/null
++++ b/apps/web/lib/pricing.ts
+@@ -0,0 +1,49 @@
++/**
++ * Single source of truth for plan prices, limits and the feature lists shown on the
++ * pricing cards, the upgrade dialog and the settings page.
++ *
++ * Limits must match PlanLimitService.java in the API. The prices here are display-only:
++ * what a customer is actually charged is set by the Dodo products behind the
++ * PREMIUM_MONTHLY / PREMIUM_YEARLY environment variables.
++ */
++export const PRICING = {
++  monthly: 3,
++  yearly: 30,
++  freeLinksPerMonth: 5,
++  proLinksPerMonth: 1000,
++  freeApiKeys: 1,
++} as const;
++
++/** Yearly price per month, e.g. "2.50". */
++export const yearlyPerMonth = (PRICING.yearly / 12).toFixed(2);
++
++/** Percent saved by paying yearly instead of monthly, e.g. 17. */
++export const yearlySavingsPercent = Math.round(
++  (1 - PRICING.yearly / (PRICING.monthly * 12)) * 100,
++);
++
++export interface PlanFeature {
++  label: string;
++  /** Shown with a "Soon" tag. Only list things on the roadmap, never things that are live. */
++  soon?: boolean;
++}
++
++export const FREE_FEATURES: PlanFeature[] = [
++  { label: `${PRICING.freeLinksPerMonth} new links a month` },
++  { label: 'Links stay active for 30 days' },
++  { label: 'Click count on every link' },
++  { label: `${PRICING.freeApiKeys} API key` },
++  { label: 'No ads or interstitial pages' },
++];
++
++export const PRO_FEATURES: PlanFeature[] = [
++  { label: 'Links that never expire' },
++  { label: 'Restores your expired links when you upgrade' },
++  {
++    label: `Up to ${PRICING.proLinksPerMonth.toLocaleString('en-US')} new links a month`,
++  },
++  { label: 'Unlimited API keys' },
++  { label: "Edit a link's destination", soon: true },
++  { label: 'Custom slugs', soon: true },
++  { label: 'Click analytics by source, country and device', soon: true },
++];
+diff --git a/apps/web/types/api.ts b/apps/web/types/api.ts
+index c0b205c..24a8193 100644
+--- a/apps/web/types/api.ts
++++ b/apps/web/types/api.ts
+@@ -10,6 +10,13 @@ export interface LinkResponseDto {
+   expiresAt: string | null;
+ }
+ 
++export interface LinkUsageResponseDto {
++  used: number;
++  limit: number;
++  premium: boolean;
++  resetsAt: string;
++}
++
+ export interface CreateApiKeyRequestDto {
+   name: string;
+ }
